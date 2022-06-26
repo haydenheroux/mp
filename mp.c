@@ -14,6 +14,8 @@
 #define BITS 8
 #define PLAYING_FILE "/tmp/playing"
 
+int skip = 0;
+
 void play(int driver, mpg123_handle** mh, char** buffer, size_t buffer_size, char* filepath) {
 	ao_device *dev;
 
@@ -35,8 +37,11 @@ void play(int driver, mpg123_handle** mh, char** buffer, size_t buffer_size, cha
 	dev = ao_open_live(driver, &format, NULL);
 
 	/* decode and play */
-	while (mpg123_read(*mh, *buffer, buffer_size, &done) == MPG123_OK)
+	while (mpg123_read(*mh, *buffer, buffer_size, &done) == MPG123_OK && !skip)
 		ao_play(dev, *buffer, done);
+
+	/* always reset the skip value when done playing */
+	skip = 0;
 
 	ao_close(dev);
 }
@@ -121,6 +126,10 @@ void shutdown(char** buffer, mpg123_handle** mh, char*** tracks)
 	exit(0);
 }
 
+void skip_playing() {
+	skip = 1;
+}
+
 int main(int argc, char *argv[])
 {
 	int should_shuffle = 0;
@@ -149,6 +158,9 @@ int main(int argc, char *argv[])
 	char* buffer;
 
 	init(&driver, &mh, &buffer, &buffer_size);
+
+	signal(SIGINT, skip_playing);
+	signal(SIGTERM, skip_playing);
 
 	for (int i = 0; i < track_count; i++) {
 		write_track_name(PLAYING_FILE, get_track_name(tracks[i]));
