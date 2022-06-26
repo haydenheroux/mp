@@ -16,7 +16,7 @@
 
 int skip = 0;
 
-void play(int driver, mpg123_handle** mh, char** buffer, size_t buffer_size, char* filepath) {
+void play(int driver, mpg123_handle* mh, char** buffer, size_t buffer_size, char* filepath) {
 	ao_device *dev;
 
 	ao_sample_format format;
@@ -25,8 +25,8 @@ void play(int driver, mpg123_handle** mh, char** buffer, size_t buffer_size, cha
 	size_t done;
 
 	/* open the file and get the decoding format */
-	mpg123_open(*mh, filepath);
-	mpg123_getformat(*mh, &rate, &channels, &encoding);
+	mpg123_open(mh, filepath);
+	mpg123_getformat(mh, &rate, &channels, &encoding);
 
 	/* set the output format and open the output device */
 	format.bits = mpg123_encsize(encoding) * BITS;
@@ -37,11 +37,8 @@ void play(int driver, mpg123_handle** mh, char** buffer, size_t buffer_size, cha
 	dev = ao_open_live(driver, &format, NULL);
 
 	/* decode and play */
-	while (mpg123_read(*mh, *buffer, buffer_size, &done) == MPG123_OK && !skip)
+	while (mpg123_read(mh, *buffer, buffer_size, &done) == MPG123_OK && !skip)
 		ao_play(dev, *buffer, done);
-
-	/* always reset the skip value when done playing */
-	skip = 0;
 
 	ao_close(dev);
 }
@@ -55,10 +52,10 @@ void init(int* driver, mpg123_handle** mh, char** buffer, size_t* buffer_size) {
 	*buffer = (char*) malloc(*buffer_size * sizeof(char));
 }
 
-void cleanup(mpg123_handle** mh)
+void cleanup(mpg123_handle* mh)
 {
-	mpg123_close(*mh);
-	mpg123_delete(*mh);
+	mpg123_close(mh);
+	mpg123_delete(mh);
 	mpg123_exit();
 	ao_shutdown();
 }
@@ -117,7 +114,7 @@ void write_track_name(char* filepath, char* name)
 	}
 }
 
-void shutdown(char** buffer, mpg123_handle** mh, char*** tracks)
+void shutdown(char** buffer, mpg123_handle* mh, char*** tracks)
 {
 	cleanup(mh);
 	free(*buffer);
@@ -128,6 +125,8 @@ void shutdown(char** buffer, mpg123_handle** mh, char*** tracks)
 
 void skip_playing() {
 	skip = 1;
+	signal(SIGINT, skip_playing);
+	signal(SIGTERM, skip_playing);
 }
 
 int main(int argc, char *argv[])
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
 		shuffle(tracks, track_count);
 
 	int driver;
-	mpg123_handle* mh;
+	mpg123_handle* mh = NULL;
 	size_t buffer_size;
 	char* buffer;
 
@@ -163,9 +162,11 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, skip_playing);
 
 	for (int i = 0; i < track_count; i++) {
+		/* reset skip value when playing a new track */
+		skip = 0;
 		write_track_name(PLAYING_FILE, get_track_name(tracks[i]));
-		play(driver, &mh, &buffer, buffer_size, tracks[i]);
+		play(driver, mh, &buffer, buffer_size, tracks[i]);
 	}
 
-	shutdown(&buffer, &mh, &tracks);
+	shutdown(&buffer, mh, &tracks);
 }
