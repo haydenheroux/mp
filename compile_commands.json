@@ -1,0 +1,16 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-c",
+      "-g",
+      "-std=c99",
+      "-pedantic",
+      "-Wall",
+      "-Os",
+      "mp.c"
+    ],
+    "directory": "/home/hayden/mp",
+    "file": "/home/hayden/mp/mp.c"
+  }
+]
