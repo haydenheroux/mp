@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -14,7 +15,9 @@
 #define BITS 8
 #define PLAYING_FILE "/tmp/playing"
 
-int skip = 0;
+volatile bool skip = false;
+volatile bool skippable = false;
+volatile bool should_exit = false;
 
 void play(int driver, mpg123_handle* mh, char** buffer, size_t buffer_size, char* filepath) {
 	ao_device *dev;
@@ -36,9 +39,13 @@ void play(int driver, mpg123_handle* mh, char** buffer, size_t buffer_size, char
 	format.matrix = 0;
 	dev = ao_open_live(driver, &format, NULL);
 
+	skippable = false;
+
 	/* decode and play */
-	while (mpg123_read(mh, *buffer, buffer_size, &done) == MPG123_OK && !skip)
+	while (mpg123_read(mh, *buffer, buffer_size, &done) == MPG123_OK && !skip) {
 		ao_play(dev, *buffer, done);
+		skippable = true;
+	}
 
 	ao_close(dev);
 }
@@ -88,22 +95,6 @@ char* get_track_name(char* path)
 	return path;
 }
 
-/* char* get_track_name(char* path) */
-/* { */
-/* 	char delim = '/'; */
-/* 	char* mark = NULL; */
-/* 	char* tmp = path; */
-/* 	while (*tmp != '\0') { */
-/* 		if (*tmp == delim) */
-/* 			mark = tmp; */
-/* 		tmp++; */
-/* 	} */
-/* 	if (mark != NULL) { */
-/* 		return ++mark; */
-/* 	} */
-/* 	return path; */
-/* } */
-
 void write_track_name(char* filepath, char* name)
 {
 	FILE *fp = fopen(filepath, "w");
@@ -120,10 +111,13 @@ void shutdown(char** buffer, mpg123_handle* mh, char*** tracks)
 	free(*buffer);
 	free(*tracks);
 	write_track_name(PLAYING_FILE, "");
-	exit(0);
+	exit(EXIT_SUCCESS);
 }
 
 void skip_playing() {
+	if (!skippable) {
+		should_exit = 1;
+	}
 	skip = 1;
 	signal(SIGINT, skip_playing);
 	signal(SIGTERM, skip_playing);
@@ -131,13 +125,13 @@ void skip_playing() {
 
 int main(int argc, char *argv[])
 {
-	int should_shuffle = 0;
+	bool should_shuffle = false;
 	int opt;
 	while ((opt = getopt(argc, argv, "z")) != -1)
 	{
 		switch (opt) {
 			case 'z':
-				should_shuffle = 1;
+				should_shuffle = true;
 				break;
 			default:
 				fprintf(stderr, "Usage: %s [-z]", argv[0]);
@@ -162,8 +156,9 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, skip_playing);
 
 	for (int i = 0; i < track_count; i++) {
+		if (should_exit) break;
 		/* reset skip value when playing a new track */
-		skip = 0;
+		skip = false;
 		write_track_name(PLAYING_FILE, get_track_name(tracks[i]));
 		play(driver, mh, &buffer, buffer_size, tracks[i]);
 	}
