@@ -15,9 +15,13 @@
 #define BITS 8
 #define PLAYING_FILE "/tmp/playing"
 
-volatile bool skip = false;
-volatile bool skippable = false;
-volatile bool should_exit = false;
+typedef enum {
+	SKIP,
+	EXIT
+} skip_action_t;
+
+volatile skip_action_t skip_action = SKIP;
+volatile bool stop = false;
 
 void play(int driver, mpg123_handle* mh, char** buffer, size_t buffer_size, char* filepath) {
 	ao_device *dev;
@@ -39,12 +43,11 @@ void play(int driver, mpg123_handle* mh, char** buffer, size_t buffer_size, char
 	format.matrix = 0;
 	dev = ao_open_live(driver, &format, NULL);
 
-	skippable = false;
+	stop = false;
 
 	/* decode and play */
-	while (mpg123_read(mh, *buffer, buffer_size, &done) == MPG123_OK && !skip) {
+	while (mpg123_read(mh, *buffer, buffer_size, &done) == MPG123_OK && !stop) {
 		ao_play(dev, *buffer, done);
-		skippable = true;
 	}
 
 	ao_close(dev);
@@ -115,10 +118,15 @@ void shutdown(char** buffer, mpg123_handle* mh, char*** tracks)
 }
 
 void skip_playing() {
-	if (!skippable) {
-		should_exit = 1;
+	switch (skip_action) {
+		case SKIP:
+			stop = true;
+			skip_action = EXIT;
+			break;
+		case EXIT:
+			exit(EXIT_SUCCESS);
+			break;
 	}
-	skip = 1;
 	signal(SIGINT, skip_playing);
 	signal(SIGTERM, skip_playing);
 }
@@ -156,11 +164,10 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, skip_playing);
 
 	for (int i = 0; i < track_count; i++) {
-		if (should_exit) break;
-		/* reset skip value when playing a new track */
-		skip = false;
 		write_track_name(PLAYING_FILE, get_track_name(tracks[i]));
 		play(driver, mh, &buffer, buffer_size, tracks[i]);
+		/* reset skip action when the song is done playing */
+		skip_action = SKIP;
 	}
 
 	shutdown(&buffer, mh, &tracks);
