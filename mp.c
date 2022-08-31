@@ -67,7 +67,6 @@ void cleanup(mpg123_handle* mh)
 	mpg123_close(mh);
 	mpg123_delete(mh);
 	mpg123_exit();
-	ao_shutdown();
 }
 
 void shuffle(char** array, size_t n)
@@ -98,22 +97,20 @@ char* get_track_name(char* path)
 	return path;
 }
 
-void write_track_name(char* filepath, char* name)
+void write_track_name(FILE* fp, char* name)
 {
-	FILE *fp = fopen(filepath, "w");
 	if (fp != NULL)
 	{
 		fputs(name, fp);
-		fclose(fp);
+		putc('\n', fp);
 	}
 }
 
-void shutdown(char** buffer, mpg123_handle* mh, char*** tracks)
+void shutdown(mpg123_handle* mh, FILE* playing_fp)
 {
 	cleanup(mh);
-	free(*buffer);
-	free(*tracks);
-	write_track_name(PLAYING_FILE, "");
+	ao_shutdown();
+	fclose(playing_fp);
 	exit(EXIT_SUCCESS);
 }
 
@@ -133,6 +130,16 @@ void skip_playing() {
 
 int main(int argc, char *argv[])
 {
+#ifdef PLAYING_FILE_IS_STDOUT
+	FILE* playing_fp = stdout;
+#else
+	FILE* playing_fp = fopen(PLAYING_FILE, "w");
+	if (playing_fp == NULL) 
+	{
+		exit(EXIT_FAILURE);
+	}
+#endif
+
 	bool should_shuffle = false;
 	int opt;
 	while ((opt = getopt(argc, argv, "z")) != -1)
@@ -164,11 +171,11 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, skip_playing);
 
 	for (int i = 0; i < track_count; i++) {
-		write_track_name(PLAYING_FILE, get_track_name(tracks[i]));
+		write_track_name(playing_fp, get_track_name(tracks[i]));
 		play(driver, mh, &buffer, buffer_size, tracks[i]);
 		/* reset skip action when the song is done playing */
 		skip_action = SKIP;
 	}
 
-	shutdown(&buffer, mh, &tracks);
+	shutdown(mh, playing_fp);
 }
