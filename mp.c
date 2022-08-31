@@ -99,11 +99,9 @@ char* get_track_name(char* path)
 
 void write_track_name(FILE* fp, char* name)
 {
-	if (fp != NULL)
-	{
-		fputs(name, fp);
-		putc('\n', fp);
-	}
+	fputs(name, fp);
+	putc('\n', fp);
+	fflush(fp);
 }
 
 void shutdown(mpg123_handle* mh, FILE* playing_fp)
